@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         os: [macos, linux]
-        arch: [x86_64, aarch64, armv7]
+        arch: [x86_64, aarch64, armv7, armv6]
         rust: [stable]
         artifact_type: ['slim', 'default', 'full']  # The build strategy will build all types for each OS specified
         include:
@@ -30,6 +30,9 @@ jobs:
           - os: linux
             arch: aarch64
             runs_on: ubuntu-22.04-arm
+          - os: linux
+            arch: armv6
+            runs_on: ubuntu-latest
           # DBus configuration
           - artifact_type: slim
             dbus: ''
@@ -59,6 +62,8 @@ jobs:
             artifact_type: 'full'
           - os: macos
             arch: armv7
+          - os: macos
+            arch: armv6
     steps:
       - name: Checking out sources
         uses: actions/checkout@v4
@@ -66,7 +71,7 @@ jobs:
         if: matrix.os == 'macos'
         run: brew install dbus portaudio
       - name: Installing needed Ubuntu dependencies
-        if: startsWith(matrix.runs_on, 'ubuntu') && matrix.target == ''
+        if: startsWith(matrix.runs_on, 'ubuntu') && matrix.target == '' && matrix.arch != 'armv6'
         run: |
           sudo apt-get update
           # WORKAROUND: fix aws-lc-sys compiler bug failure
@@ -87,7 +92,7 @@ jobs:
           features="--no-default-features --features ${{ matrix.dbus }},${{ matrix.audio_backends }}"
           echo CARGO_ARGS="--locked --release $features" | tee -a "$GITHUB_ENV"
       - name: Build (using cargo)
-        if: matrix.target == ''
+        if: matrix.target == '' && matrix.arch != 'armv6'
         run: |
            cargo +${{ matrix.rust }} build $CARGO_ARGS
       - name: Build (using cross)
@@ -99,6 +104,26 @@ jobs:
           toolchain: ${{ matrix.rust }}
           target: ${{ matrix.target }}
           args: $CARGO_ARGS
+      - name: Set up QEMU
+        if: matrix.arch == 'armv6'
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        if: matrix.arch == 'armv6'
+        uses: docker/setup-buildx-action@v3
+      - name: Build (using docker buildx for armv6)
+        if: matrix.arch == 'armv6'
+        run: |
+          docker buildx build \
+            --platform linux/arm/v6 \
+            --file .github/Dockerfile.armv6 \
+            --target export \
+            --output type=local,dest=./armv6-out \
+            --cache-from type=gha,scope=armv6-${{ matrix.artifact_type }} \
+            --cache-to type=gha,scope=armv6-${{ matrix.artifact_type }},mode=max \
+            --build-arg FEATURES="--no-default-features --features ${{ matrix.dbus }},${{ matrix.audio_backends }}" \
+            .
+          mkdir -p target/release
+          cp ./armv6-out/spotifyd target/release/spotifyd
       - name: Uploading artifacts
         uses: actions/upload-artifact@v4
         with:
