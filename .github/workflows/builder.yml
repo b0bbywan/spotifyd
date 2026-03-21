@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - '.github/Dockerfile.builder'
+      - 'Cargo.lock'
   push:
     branches:
       - master
     paths:
       - '.github/Dockerfile.builder'
+      - 'Cargo.lock'
   workflow_dispatch:
 
 permissions:

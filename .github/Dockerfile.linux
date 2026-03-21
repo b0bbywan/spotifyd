@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # ── Builder ────────────────────────────────────────────────────────────────────
-# Base image pre-bakes system dependencies and the Rust toolchain.
+# Base image pre-bakes system dependencies, the Rust toolchain, and all
+# crate dependencies. Only spotifyd itself is compiled here.
 # See .github/Dockerfile.builder and .github/workflows/builder.yml.
 FROM ghcr.io/b0bbywan/spotifyd-builder AS builder
 
@@ -13,13 +14,9 @@ WORKDIR /build
 COPY Cargo.lock Cargo.toml ./
 COPY src/ src/
 
-# Cargo cache is preserved between builds so changing FEATURES
-# does not recompile all dependencies from scratch.
+# Dependencies are already compiled in the base image — only spotifyd is built.
 # shellcheck disable=SC2086  # $FEATURES must be word-split intentionally
-RUN --mount=type=cache,target=/root/.cargo/registry \
-    --mount=type=cache,target=/root/.cargo/git \
-    --mount=type=cache,target=/build/target \
-    cargo build --locked --release $FEATURES && \
+RUN cargo build --locked --release $FEATURES && \
     cp target/release/spotifyd /spotifyd
 
 # ── Binary export: extract via --output type=local ────────────────────────────

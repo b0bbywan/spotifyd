@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 #
 # Base builder image for spotifyd CI — published to ghcr.io/b0bbywan/spotifyd-builder.
-# Embeds system dependencies and the Rust toolchain so the main build only
-# has to compile spotifyd itself.
+# Embeds system dependencies, the Rust toolchain, and pre-compiled dependencies
+# so the main build only has to compile spotifyd itself.
 #
-# Rebuilt automatically when this file changes (see .github/workflows/builder.yml).
+# Rebuilt when this file or Cargo.lock changes (see .github/workflows/builder.yml).
 
 # ── Base OS images ─────────────────────────────────────────────────────────────
 # amd64: Debian Trixie (native build)
@@ -58,3 +58,18 @@ RUN set -eux; \
 ENV PATH="/root/.cargo/bin:$PATH"
 # Use native bindgen (no cross-compilation)
 ENV AWS_LC_SYS_BINDGEN=1
+
+# ── Pre-compile dependencies with cargo-chef ───────────────────────────────────
+RUN cargo install cargo-chef --locked
+
+WORKDIR /build
+COPY Cargo.lock Cargo.toml ./
+# Dummy source so cargo-chef can analyse the dependency graph
+RUN mkdir -p src && echo 'fn main() {}' > src/main.rs
+
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Cook with the full feature set so every possible build hits the cache
+RUN cargo chef cook --locked --release --no-default-features \
+    --features alsa_backend,pulseaudio_backend,rodio_backend,rodiojack_backend,dbus_mpris \
+    --recipe-path recipe.json
