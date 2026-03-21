@@ -1,22 +1,20 @@
 # syntax=docker/dockerfile:1
 #
 # Base builder image for spotifyd CI — published to ghcr.io/b0bbywan/spotifyd-builder.
-# Embeds system dependencies, the Rust toolchain, and pre-compiled dependencies
-# so the main build only has to compile spotifyd itself.
+# Multi-stage build so Docker layer cache is maximally granular:
+#   - system deps / toolchain layer: invalidated when this file changes
+#   - dep compilation layer:         invalidated only when Cargo.lock changes
 #
 # Rebuilt when this file or Cargo.lock changes (see .github/workflows/builder.yml).
 
 # ── Base OS images ─────────────────────────────────────────────────────────────
-# amd64: Debian Trixie (native build)
-# arm64/armhf: RaspiOS (Trixie), run natively under QEMU binfmt_misc —
-#   no cross-compiler needed, not even for bindgen.
 FROM debian:trixie-slim       AS base-amd64
 FROM vascoguita/raspios:arm64 AS base-arm64
 FROM vascoguita/raspios:armhf AS base-arm
 
-# ── Builder ────────────────────────────────────────────────────────────────────
+# ── Stage 1: system deps + Rust toolchain ─────────────────────────────────────
 ARG TARGETARCH
-FROM base-${TARGETARCH}
+FROM base-${TARGETARCH} AS base-builder
 
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -56,20 +54,30 @@ RUN set -eux; \
         ${RUST_HOST:+--default-host "$RUST_HOST"}
 
 ENV PATH="/root/.cargo/bin:$PATH"
-# Use native bindgen (no cross-compilation)
 ENV AWS_LC_SYS_BINDGEN=1
 
-# ── Pre-compile dependencies with cargo-chef ───────────────────────────────────
 RUN cargo install cargo-chef --locked
+
+# ── Stage 2: dependency recipe (cheap, reruns when Cargo.lock changes) ─────────
+FROM base-builder AS planner
 
 WORKDIR /build
 COPY Cargo.lock Cargo.toml ./
-# Dummy source so cargo-chef can analyse the dependency graph
 RUN mkdir -p src && echo 'fn main() {}' > src/main.rs
-
 RUN cargo chef prepare --recipe-path recipe.json
 
-# Cook with the full feature set so every possible build hits the cache
+# ── Stage 3: compile all dependencies (cached until Cargo.lock changes) ────────
+FROM base-builder AS cacher
+
+WORKDIR /build
+COPY --from=planner /build/recipe.json recipe.json
+# Cook with the full feature set so every possible CD build hits the cache
 RUN cargo chef cook --locked --release --no-default-features \
     --features alsa_backend,pulseaudio_backend,rodio_backend,rodiojack_backend,dbus_mpris \
     --recipe-path recipe.json
+
+# ── Final image: toolchain + pre-compiled deps ─────────────────────────────────
+FROM base-builder
+
+COPY --from=cacher /build/target /build/target
+COPY --from=cacher /root/.cargo  /root/.cargo
