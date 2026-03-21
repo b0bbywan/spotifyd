@@ -69,7 +69,7 @@ jobs:
             arch: armv6
     steps:
       - name: Checking out sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Installing needed macOS dependencies
         if: matrix.os == 'macos'
         run: brew install dbus portaudio
@@ -151,13 +151,13 @@ jobs:
           dpkg-deb --build --root-owner-group "${PKG}"
           echo "DEB_PATH=${PKG}.deb" >> "$GITHUB_ENV"
       - name: Uploading artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: spotifyd-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.artifact_type }}
           path: target/release/spotifyd
       - name: Uploading .deb artifact
         if: matrix.os == 'linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: spotifyd-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.artifact_type }}-deb
           path: ${{ env.DEB_PATH }}
@@ -167,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Downloading artifacts # download all binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
       - name: Packaging final binary
         shell: bash
         run: |
