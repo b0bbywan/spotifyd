@@ -109,7 +109,7 @@ jobs:
         run: |
           docker buildx build \
             --platform ${{ matrix.docker_platform }} \
-            --file .github/Dockerfile.armv6 \
+            --file .github/Dockerfile.linux \
             --target export \
             --output type=local,dest=./${{ matrix.arch }}-out \
             --cache-from type=gha,scope=${{ matrix.arch }}-${{ matrix.artifact_type }} \
