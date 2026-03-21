@@ -1,75 +1,27 @@
 # syntax=docker/dockerfile:1
 
-# ── Builder base images ────────────────────────────────────────────────────────
-# amd64: Debian Trixie (build natif)
-# arm64/arm: RaspiOS (Bookworm), exécuté nativement via QEMU binfmt_misc —
-#   pas de cross-compiler nécessaire, même pour CGO/bindgen
-FROM debian:trixie-slim       AS base-amd64
-FROM vascoguita/raspios:arm64 AS base-arm64
-FROM vascoguita/raspios:armhf AS base-arm
+# ── Builder ────────────────────────────────────────────────────────────────────
+# Base image pre-bakes system dependencies and the Rust toolchain.
+# See .github/Dockerfile.builder and .github/workflows/builder.yml.
+FROM ghcr.io/b0bbywan/spotifyd-builder AS builder
 
-# ── Builder ───────────────────────────────────────────────────────────────────
-ARG TARGETARCH
-FROM base-${TARGETARCH} AS builder
-
-ARG TARGETARCH
-ARG TARGETVARIANT
-# Fonctionnalités à compiler. Valeur par défaut : slim armv6 (alsa seul, sans
-# pulseaudio/dbus pour réduire les dépendances sur Pi Zero)
+# Default: slim build with alsa only
 ARG FEATURES="--no-default-features --features alsa_backend"
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    gcc \
-    libc6-dev \
-    # aws-lc-rs (bindgen) — requis sur les cibles non-x86_64/aarch64
-    libclang-dev \
-    cmake \
-    pkg-config \
-    # alsa_backend + base
-    libasound2-dev \
-    libssl-dev \
-    # dbus_mpris (désactivé par défaut pour armv6 mais gardé disponible)
-    libdbus-1-dev \
-    # pulseaudio_backend (idem)
-    libpulse-dev \
-    # rodiojack_backend
-    libjack-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Installe Rust en forçant le host triple correct.
-# QEMU peut rapporter armv7 même sur un container armv6 — on corrige ça manuellement.
-RUN set -eux; \
-    case "${TARGETARCH}${TARGETVARIANT}" in \
-        armv6)   RUST_HOST="arm-unknown-linux-gnueabihf"    ;; \
-        armv7)   RUST_HOST="armv7-unknown-linux-gnueabihf"  ;; \
-        arm64)   RUST_HOST="aarch64-unknown-linux-gnu"      ;; \
-        amd64)   RUST_HOST="x86_64-unknown-linux-gnu"       ;; \
-        *)       RUST_HOST=""                               ;; \
-    esac; \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-        sh -s -- -y --default-toolchain stable --profile minimal \
-        ${RUST_HOST:+--default-host "$RUST_HOST"}
-ENV PATH="/root/.cargo/bin:$PATH"
-
-# aws-lc-rs utilise bindgen en mode natif (pas de cross-compilation)
-ENV AWS_LC_SYS_BINDGEN=1
 
 WORKDIR /build
 
 COPY Cargo.lock Cargo.toml ./
 COPY src/ src/
 
-# Le cache cargo persiste entre les builds — changer FEATURES ne recompile
-# pas toutes les dépendances depuis zéro.
-# shellcheck disable=SC2086  # $FEATURES doit être word-split intentionnellement
+# Cargo cache is preserved between builds so changing FEATURES
+# does not recompile all dependencies from scratch.
+# shellcheck disable=SC2086  # $FEATURES must be word-split intentionally
 RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/build/target \
     cargo build --locked --release $FEATURES && \
     cp target/release/spotifyd /spotifyd
 
-# ── Binary export : extrait via --output type=local ───────────────────────────
+# ── Binary export: extract via --output type=local ────────────────────────────
 FROM scratch AS export
 COPY --from=builder /spotifyd /spotifyd
