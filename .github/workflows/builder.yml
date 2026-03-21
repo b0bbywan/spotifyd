@@ -1,7 +1,12 @@
 name: Build base builder image
 
 on:
+  pull_request:
+    paths:
+      - '.github/Dockerfile.builder'
   push:
+    branches:
+      - master
     paths:
       - '.github/Dockerfile.builder'
   workflow_dispatch:
