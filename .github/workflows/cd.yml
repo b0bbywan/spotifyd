@@ -120,18 +120,18 @@ jobs:
           mkdir -p target/release
           cp ./${{ matrix.arch }}-out/spotifyd target/release/spotifyd
       - name: Package .deb
-        if: matrix.os == 'linux'
+        if: matrix.os == 'linux' && matrix.artifact_type == 'full' && matrix.arch != 'armv7'
         run: |
           case "${{ matrix.arch }}" in
             x86_64)  DEB_ARCH=amd64  ;;
             aarch64) DEB_ARCH=arm64  ;;
-            armv7)   DEB_ARCH=armhf  ;;
-            armv6)   DEB_ARCH=armel  ;;
+            armv6)   DEB_ARCH=armhf  ;;
           esac
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
             VERSION="0.0.0+$(git rev-parse --short HEAD)"
           fi
+          DEB_VERSION="${VERSION/-/~}"
           PKG="spotifyd_${VERSION}_${DEB_ARCH}"
           mkdir -p "${PKG}/DEBIAN" \
                    "${PKG}/usr/bin" \
@@ -140,7 +140,7 @@ jobs:
           cp contrib/spotifyd.service "${PKG}/usr/lib/systemd/user/spotifyd.service"
           cat > "${PKG}/DEBIAN/control" <<EOF
           Package: spotifyd
-          Version: ${VERSION}
+          Version: ${DEB_VERSION}
           Architecture: ${DEB_ARCH}
           Maintainer: spotifyd contributors <https://github.com/Spotifyd/spotifyd>
           Section: sound
@@ -157,7 +157,7 @@ jobs:
           name: spotifyd-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.artifact_type }}
           path: target/release/spotifyd
       - name: Uploading .deb artifact
-        if: matrix.os == 'linux'
+        if: matrix.os == 'linux' && matrix.artifact_type == 'full' && matrix.arch != 'armv7'
         uses: actions/upload-artifact@v6
         with:
           name: spotifyd-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.artifact_type }}-deb
