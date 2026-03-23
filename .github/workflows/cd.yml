@@ -131,7 +131,7 @@ jobs:
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
             VERSION="0.0.0+$(git rev-parse --short HEAD)"
           fi
-          DEB_VERSION="${VERSION/-/~}"
+          DEB_VERSION=$(echo "$VERSION" | sed 's/-/~/')
           PKG="spotifyd_${VERSION}_${DEB_ARCH}"
           mkdir -p "${PKG}/DEBIAN" \
                    "${PKG}/usr/bin" \
