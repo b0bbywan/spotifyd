@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+
+# ── Builder ────────────────────────────────────────────────────────────────────
+# Base image pre-bakes system dependencies, the Rust toolchain, and all
+# crate dependencies. Only spotifyd itself is compiled here.
+# See .github/Dockerfile.builder and .github/workflows/builder.yml.
+FROM ghcr.io/b0bbywan/spotifyd-builder AS builder
+
+# Default: slim build with alsa only
+ARG FEATURES="--no-default-features --features alsa_backend"
+
+WORKDIR /build
+
+COPY Cargo.lock Cargo.toml ./
+COPY src/ src/
+
+# Dependencies are already compiled in the base image — only spotifyd is built.
+# shellcheck disable=SC2086  # $FEATURES must be word-split intentionally
+RUN cargo build --locked --release $FEATURES && \
+    cp target/release/spotifyd /spotifyd
+
+# ── Binary export: extract via --output type=local ────────────────────────────
+FROM scratch AS export
+COPY --from=builder /spotifyd /spotifyd
