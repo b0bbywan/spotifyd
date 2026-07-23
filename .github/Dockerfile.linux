@@ -29,6 +29,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gcc \
+    # required by aws-lc-sys (cmake build): debian:*-slim ships neither,
+    # unlike the RPi OS Lite rootfs
+    g++ \
+    make \
     libc6-dev \
     # required by aws-lc-rs (bindgen) on non-x86_64/aarch64 targets
     libclang-dev \
