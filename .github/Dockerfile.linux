@@ -1,16 +1,24 @@
 # syntax=docker/dockerfile:1
 
 # ── Builder base images ────────────────────────────────────────────────────────
-# amd64: native build on Debian Trixie
-# arm64/arm: RaspiOS (Trixie), runs natively via QEMU binfmt_misc —
+# amd64/arm64/armv7: official Debian Bookworm images.
+# armv6: Raspberry Pi OS (Bookworm) — Debian ships no armv6 hard-float port,
+#   this is the only arch that needs it. Rootfs is extracted from the official
+#   RPi OS Lite release images (see https://github.com/vascoguita/raspios-docker),
+#   pinned to an immutable date tag + manifest digest.
+# Bookworm keeps the glibc baseline at 2.36 so binaries run on bookworm-era
+#   systems (close to the ubuntu-22.04 x86_64 builds).
+# arm/arm64 builds run natively via QEMU binfmt_misc —
 #   no cross-compiler needed, even for bindgen
-FROM debian:trixie-slim       AS base-amd64
-FROM vascoguita/raspios:arm64 AS base-arm64
-FROM vascoguita/raspios:armhf AS base-arm
+FROM --platform=linux/amd64  debian:bookworm-slim AS base-amd64
+FROM --platform=linux/arm64  debian:bookworm-slim AS base-arm64
+FROM --platform=linux/arm/v7 debian:bookworm-slim AS base-armv7
+FROM --platform=linux/arm/v6 vascoguita/raspios:armhf-bookworm-2025-05-13@sha256:38b812d3a83a9760f9c208d96aa55156ba56fed35a3f41d063bcbe9f00c54639 AS base-armv6
 
 # ── Builder ───────────────────────────────────────────────────────────────────
 ARG TARGETARCH
-FROM base-${TARGETARCH} AS builder
+ARG TARGETVARIANT
+FROM base-${TARGETARCH}${TARGETVARIANT} AS builder
 
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -21,6 +29,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gcc \
+    # required by aws-lc-sys (cmake build): debian:*-slim ships neither,
+    # unlike the RPi OS Lite rootfs
+    g++ \
+    make \
     libc6-dev \
     # required by aws-lc-rs (bindgen) on non-x86_64/aarch64 targets
     libclang-dev \
